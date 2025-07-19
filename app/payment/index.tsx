@@ -198,12 +198,17 @@ export default function PaymentScreen() {
         <Text style={styles.qrSubtitle}>Use PhonePe app to scan and pay</Text>
         
         <View style={styles.qrContainer}>
-          <Image
+          {/* <Image
             source={{
               uri: 'https://images.pexels.com/photos/8919564/pexels-photo-8919564.jpeg?auto=compress&cs=tinysrgb&w=400&h=400&fit=crop'
             }}
             style={styles.qrImage}
             resizeMode="contain"
+          /> */}
+          <Image
+            source={ require('../../assets/images/QR_Payment.png') }
+            style={styles.qrImage}
+            resizeMode="contain" 
           />
         </View>
 

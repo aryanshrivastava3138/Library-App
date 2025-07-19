@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "bolt-expo-nativewind",
-    "slug": "bolt-expo-nativewind",
+    "name": "Life-Changer-Library",
+    "slug": "Life-Changer-Library",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
@@ -24,12 +24,15 @@
     "experiments": {
       "typedRoutes": true
     },
+    "owner": "mrpmunnadas",
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "4d506bf7-299a-438a-9d19-12caf8e76870"
+        "projectId": "cb76808b-adb5-4ea8-bc35-18cfa91f469e"
       }
     },
-    "owner": "mrpmunnadas"
+    "android": {
+      "package": "com.mrpmunnadas.LifeChangerLibrary"
+    }
   }
 }
