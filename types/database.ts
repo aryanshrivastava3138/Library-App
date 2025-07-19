@@ -70,16 +70,55 @@ export interface PaymentHistory {
   duration_months: number;
   payment_date: string;
   receipt_number: string;
+  approval_status?: 'pending' | 'approved' | 'rejected';
   created_at: string;
 }
 
-export interface HelpRequest {
+export interface Notification {
   id: string;
   user_id: string;
-  category: 'seat_issue' | 'payment_issue' | 'technical_issue';
-  subject: string;
-  description: string;
-  status: 'open' | 'in_progress' | 'resolved';
-  admin_response?: string;
+  title: string;
+  message: string;
+  type: 'info' | 'warning' | 'success' | 'error';
+  is_read: boolean;
+  created_by?: string;
+  created_at: string;
+}
+
+export interface CashPayment {
+  id: string;
+  user_id: string;
+  booking_id?: string;
+  admission_id?: string;
+  amount: number;
+  status: 'pending' | 'approved' | 'rejected';
+  admin_notes?: string;
+  approved_by?: string;
+  approved_at?: string;
+  created_at: string;
+}
+
+export interface AdminLog {
+  id: string;
+  admin_id: string;
+  action: string;
+  target_user_id?: string;
+  details?: any;
+  created_at: string;
+}
+
+export interface DashboardStats {
+  total_students: number;
+  active_students: number;
+  total_bookings_today: number;
+  pending_cash_payments: number;
+  expiring_soon: number;
+  shift_occupancy: {
+    [key: string]: {
+      booked: number;
+      total: number;
+      percentage: number;
+    };
+  };
   created_at: string;
 }
