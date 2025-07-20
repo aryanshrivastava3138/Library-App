@@ -98,6 +98,17 @@ export interface CashPayment {
   created_at: string;
 }
 
+export interface Notification {
+  id: string;
+  user_id?: string;
+  title: string;
+  message: string;
+  type: 'info' | 'warning' | 'success' | 'error';
+  is_read: boolean;
+  created_by?: string;
+  created_at: string;
+}
+
 export interface AdminLog {
   id: string;
   admin_id: string;

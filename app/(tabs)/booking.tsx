@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Modal } from 'react-native';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { Card } from '@/components/ui/Card';
@@ -8,7 +8,7 @@ import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { Admission, SeatBooking } from '@/types/database';
 import { SHIFTS } from '@/types/shifts';
 import { generateSeatNumbers } from '@/utils/shiftUtils';
-import { MapPin, Clock, CircleCheck as CheckCircle, CircleAlert as AlertCircle } from 'lucide-react-native';
+import { MapPin, Clock, CircleCheck as CheckCircle, CircleAlert as AlertCircle, CreditCard, Banknote, X } from 'lucide-react-native';
 
 export default function BookingScreen() {
   const { user } = useAuth();
@@ -19,6 +19,9 @@ export default function BookingScreen() {
   const [selectedSeat, setSelectedSeat] = useState<string>('');
   const [loading, setLoading] = useState(true);
   const [booking, setBooking] = useState(false);
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [paymentMode, setPaymentMode] = useState<'qr' | 'cash' | null>(null);
+  const [processingPayment, setProcessingPayment] = useState(false);
 
   const seatNumbers = generateSeatNumbers();
 
@@ -67,7 +70,7 @@ export default function BookingScreen() {
     }
   };
 
-  const handleSeatBooking = async () => {
+  const handleSeatBooking = () => {
     if (!user || !selectedSeat || !selectedShift) return;
 
     // Check if user already has a booking for this shift
@@ -81,37 +84,74 @@ export default function BookingScreen() {
       return;
     }
 
+    // Show payment modal instead of direct booking
+    setShowPaymentModal(true);
+  };
+
+  const handlePaymentModeSelection = (mode: 'qr' | 'cash') => {
+    setPaymentMode(mode);
+  };
+
+  const handlePaymentCompletion = async () => {
+    if (!user || !selectedSeat || !selectedShift || !paymentMode) return;
+
     setBooking(true);
+    setProcessingPayment(true);
 
     try {
       const today = new Date().toISOString().split('T')[0];
       
-      const { error } = await supabase
+      const { data: bookingData, error: bookingError } = await supabase
         .from('seat_bookings')
         .insert({
           user_id: user.id,
           shift: selectedShift,
           seat_number: selectedSeat,
-          booking_status: 'booked',
+          booking_status: paymentMode === 'qr' ? 'booked' : 'pending',
           booking_date: today,
-        });
+        })
+        .select()
+        .single();
 
-      if (error) throw error;
+      if (bookingError) throw bookingError;
 
-      Alert.alert(
-        'Booking Successful!',
-        `Seat ${selectedSeat} has been booked for the ${selectedShift} shift.`,
-        [{ text: 'OK' }]
-      );
+      // If cash payment, create cash payment record
+      if (paymentMode === 'cash') {
+        const { error: cashPaymentError } = await supabase
+          .from('cash_payments')
+          .insert({
+            user_id: user.id,
+            booking_id: bookingData.id,
+            amount: 50, // Base booking fee
+            status: 'pending'
+          });
+
+        if (cashPaymentError) throw cashPaymentError;
+
+        Alert.alert(
+          'Booking Submitted!',
+          `Your booking for seat ${selectedSeat} (${selectedShift} shift) has been submitted for admin approval. You will be notified once approved.`,
+          [{ text: 'OK' }]
+        );
+      } else {
+        Alert.alert(
+          'Booking Successful!',
+          `Seat ${selectedSeat} has been booked for the ${selectedShift} shift.`,
+          [{ text: 'OK' }]
+        );
+      }
 
       // Refresh bookings
       await fetchData();
       setSelectedSeat('');
+      setShowPaymentModal(false);
+      setPaymentMode(null);
     } catch (error) {
       console.error('Error booking seat:', error);
       Alert.alert('Booking Failed', 'Unable to book the seat. Please try again.');
     } finally {
       setBooking(false);
+      setProcessingPayment(false);
     }
   };
 
@@ -298,7 +338,7 @@ export default function BookingScreen() {
 
           {selectedSeat && !hasUserBookedShift(selectedShift) && (
             <Button
-              title={booking ? 'Booking...' : `Book Seat ${selectedSeat}`}
+              title={booking ? 'Processing...' : `Book Seat ${selectedSeat}`}
               onPress={handleSeatBooking}
               disabled={booking}
               style={styles.bookButton}
@@ -322,6 +362,111 @@ export default function BookingScreen() {
           ))}
         </Card>
       )}
+
+      {/* Payment Modal */}
+      <Modal
+        visible={showPaymentModal}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setShowPaymentModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Choose Payment Method</Text>
+              <TouchableOpacity
+                onPress={() => setShowPaymentModal(false)}
+                style={styles.closeButton}
+              >
+                <X size={24} color="#64748B" />
+              </TouchableOpacity>
+            </View>
+
+            <Text style={styles.modalSubtitle}>
+              Booking: Seat {selectedSeat} - {selectedShift} shift
+            </Text>
+
+            <View style={styles.paymentOptions}>
+              <TouchableOpacity
+                style={[
+                  styles.paymentOption,
+                  paymentMode === 'qr' && styles.paymentOptionSelected
+                ]}
+                onPress={() => handlePaymentModeSelection('qr')}
+              >
+                <CreditCard size={32} color={paymentMode === 'qr' ? '#FFFFFF' : '#2563EB'} />
+                <Text style={[
+                  styles.paymentOptionText,
+                  paymentMode === 'qr' && styles.paymentOptionTextSelected
+                ]}>
+                  QR Payment
+                </Text>
+                <Text style={[
+                  styles.paymentOptionDesc,
+                  paymentMode === 'qr' && styles.paymentOptionDescSelected
+                ]}>
+                  Pay instantly via UPI
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[
+                  styles.paymentOption,
+                  paymentMode === 'cash' && styles.paymentOptionSelected
+                ]}
+                onPress={() => handlePaymentModeSelection('cash')}
+              >
+                <Banknote size={32} color={paymentMode === 'cash' ? '#FFFFFF' : '#10B981'} />
+                <Text style={[
+                  styles.paymentOptionText,
+                  paymentMode === 'cash' && styles.paymentOptionTextSelected
+                ]}>
+                  Cash Payment
+                </Text>
+                <Text style={[
+                  styles.paymentOptionDesc,
+                  paymentMode === 'cash' && styles.paymentOptionDescSelected
+                ]}>
+                  Pay at library (requires approval)
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            {paymentMode === 'qr' && (
+              <View style={styles.qrPaymentSection}>
+                <Text style={styles.qrTitle}>Scan QR Code to Pay</Text>
+                <View style={styles.qrContainer}>
+                  <Text style={styles.qrPlaceholder}>QR Code Image</Text>
+                </View>
+                <Text style={styles.qrAmount}>Amount: ₹50</Text>
+              </View>
+            )}
+
+            {paymentMode === 'cash' && (
+              <View style={styles.cashPaymentSection}>
+                <Text style={styles.cashTitle}>Cash Payment</Text>
+                <Text style={styles.cashDescription}>
+                  Your booking will be submitted for admin approval. Please visit the library to complete cash payment.
+                </Text>
+                <Text style={styles.cashAmount}>Amount: ₹50</Text>
+              </View>
+            )}
+
+            {paymentMode && (
+              <Button
+                title={
+                  processingPayment ? 'Processing...' : 
+                  paymentMode === 'qr' ? 'I Have Completed Payment' : 
+                  'Submit for Approval'
+                }
+                onPress={handlePaymentCompletion}
+                disabled={processingPayment}
+                style={styles.confirmPaymentButton}
+              />
+            )}
+          </View>
+        </View>
+      </Modal>
     </ScrollView>
   );
 }
@@ -530,5 +675,123 @@ const styles = StyleSheet.create({
   bookingSeat: {
     fontSize: 14,
     color: '#64748B',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  modalContent: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 24,
+    width: '100%',
+    maxWidth: 400,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#1E293B',
+  },
+  closeButton: {
+    padding: 4,
+  },
+  modalSubtitle: {
+    fontSize: 14,
+    color: '#64748B',
+    marginBottom: 24,
+  },
+  paymentOptions: {
+    gap: 16,
+    marginBottom: 24,
+  },
+  paymentOption: {
+    padding: 20,
+    borderWidth: 2,
+    borderColor: '#E5E7EB',
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  paymentOptionSelected: {
+    borderColor: '#2563EB',
+    backgroundColor: '#2563EB',
+  },
+  paymentOptionText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1E293B',
+    marginTop: 8,
+  },
+  paymentOptionTextSelected: {
+    color: '#FFFFFF',
+  },
+  paymentOptionDesc: {
+    fontSize: 12,
+    color: '#64748B',
+    marginTop: 4,
+  },
+  paymentOptionDescSelected: {
+    color: '#FFFFFF',
+  },
+  qrPaymentSection: {
+    alignItems: 'center',
+    marginBottom: 24,
+  },
+  qrTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1E293B',
+    marginBottom: 16,
+  },
+  qrContainer: {
+    width: 150,
+    height: 150,
+    backgroundColor: '#F8FAFC',
+    borderRadius: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  qrPlaceholder: {
+    fontSize: 14,
+    color: '#64748B',
+  },
+  qrAmount: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#10B981',
+  },
+  cashPaymentSection: {
+    alignItems: 'center',
+    marginBottom: 24,
+  },
+  cashTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1E293B',
+    marginBottom: 12,
+  },
+  cashDescription: {
+    fontSize: 14,
+    color: '#64748B',
+    textAlign: 'center',
+    lineHeight: 20,
+    marginBottom: 16,
+  },
+  cashAmount: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#10B981',
+  },
+  confirmPaymentButton: {
+    width: '100%',
   },
 });
