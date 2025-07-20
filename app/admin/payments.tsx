@@ -61,6 +61,16 @@ export default function AdminPaymentsScreen() {
     setProcessing(paymentId);
 
     try {
+      // Get the cash payment details to update the booking
+      const { data: cashPayment, error: fetchError } = await supabase
+        .from('cash_payments')
+        .select('booking_id')
+        .eq('id', paymentId)
+        .single();
+
+      if (fetchError) throw fetchError;
+
+      // Update cash payment status
       const { error } = await supabase
         .from('cash_payments')
         .update({
@@ -72,6 +82,26 @@ export default function AdminPaymentsScreen() {
         .eq('id', paymentId);
 
       if (error) throw error;
+
+      // If approved, update the booking status to 'booked'
+      if (action === 'approve' && cashPayment.booking_id) {
+        const { error: bookingError } = await supabase
+          .from('seat_bookings')
+          .update({ booking_status: 'booked' })
+          .eq('id', cashPayment.booking_id);
+
+        if (bookingError) throw bookingError;
+      }
+
+      // If rejected, remove the booking
+      if (action === 'reject' && cashPayment.booking_id) {
+        const { error: bookingError } = await supabase
+          .from('seat_bookings')
+          .delete()
+          .eq('id', cashPayment.booking_id);
+
+        if (bookingError) throw bookingError;
+      }
 
       // Log admin action
       await supabase
