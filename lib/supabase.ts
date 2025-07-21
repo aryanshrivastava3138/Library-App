@@ -62,7 +62,7 @@ if (!supabaseUrl || !supabaseAnonKey) {
       persistSession: true,
       detectSessionInUrl: false,
       flowType: 'pkce',
-      storage: undefined,
+      storage: typeof window !== 'undefined' ? window.localStorage : undefined,
       storageKey: 'sb-auth-token',
       debug: true
     },
