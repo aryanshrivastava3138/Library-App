@@ -1,15 +1,17 @@
 import { useState } from 'react';
 import { View, Text, StyleSheet, KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
+import { TouchableOpacity } from 'react-native';
 import { router } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Card } from '@/components/ui/Card';
-import { ArrowLeft } from 'lucide-react-native';
+import { ArrowLeft, User, Shield } from 'lucide-react-native';
 
 export default function LoginScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [selectedRole, setSelectedRole] = useState<'student' | 'admin'>('student');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   
@@ -29,7 +31,13 @@ export default function LoginScreen() {
     if (result.error) {
       setError(result.error);
     } else {
-      router.replace('/(tabs)');
+      // Check if user role matches selected role after successful login
+      // The AuthContext will handle the actual role verification
+      if (selectedRole === 'admin') {
+        router.replace('/admin');
+      } else {
+        router.replace('/(tabs)');
+      }
     }
     
     setLoading(false);
@@ -51,7 +59,42 @@ export default function LoginScreen() {
 
         <Card style={styles.card}>
           <Text style={styles.title}>Welcome Back</Text>
-          <Text style={styles.subtitle}>Sign in to your account</Text>
+          <Text style={styles.subtitle}>Choose your login type and sign in</Text>
+
+          {/* Role Selection */}
+          <View style={styles.roleSelection}>
+            <TouchableOpacity
+              style={[
+                styles.roleButton,
+                selectedRole === 'student' && styles.roleButtonSelected
+              ]}
+              onPress={() => setSelectedRole('student')}
+            >
+              <User size={24} color={selectedRole === 'student' ? '#FFFFFF' : '#2563EB'} />
+              <Text style={[
+                styles.roleButtonText,
+                selectedRole === 'student' && styles.roleButtonTextSelected
+              ]}>
+                Student Login
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[
+                styles.roleButton,
+                selectedRole === 'admin' && styles.roleButtonSelected
+              ]}
+              onPress={() => setSelectedRole('admin')}
+            >
+              <Shield size={24} color={selectedRole === 'admin' ? '#FFFFFF' : '#2563EB'} />
+              <Text style={[
+                styles.roleButtonText,
+                selectedRole === 'admin' && styles.roleButtonTextSelected
+              ]}>
+                Admin Login
+              </Text>
+            </TouchableOpacity>
+          </View>
 
           {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
@@ -73,7 +116,7 @@ export default function LoginScreen() {
           />
 
           <Button
-            title={loading ? 'Signing In...' : 'Sign In'}
+            title={loading ? 'Signing In...' : `Sign In as ${selectedRole === 'admin' ? 'Admin' : 'Student'}`}
             onPress={handleLogin}
             disabled={loading}
             style={styles.loginButton}
@@ -130,6 +173,36 @@ const styles = StyleSheet.create({
     padding: 12,
     backgroundColor: '#FEF2F2',
     borderRadius: 8,
+  },
+  roleSelection: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 24,
+  },
+  roleButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 16,
+    borderWidth: 2,
+    borderColor: '#2563EB',
+    borderRadius: 12,
+    backgroundColor: '#FFFFFF',
+    gap: 8,
+  },
+  roleButtonSelected: {
+    backgroundColor: '#2563EB',
+    borderColor: '#2563EB',
+  },
+  roleButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#2563EB',
+    textAlign: 'center',
+  },
+  roleButtonTextSelected: {
+    color: '#FFFFFF',
   },
   loginButton: {
     marginBottom: 16,
