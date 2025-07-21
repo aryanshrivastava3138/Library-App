@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, Alert, Image } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Alert, Image, TouchableOpacity } from 'react-native';
 import { router } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
@@ -9,13 +9,14 @@ import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { Admission } from '@/types/database';
 import { addMonthsToDate } from '@/utils/dateUtils';
 import QRCode from 'react-native-qrcode-svg';
-import { CreditCard, CircleCheck as CheckCircle, ArrowLeft } from 'lucide-react-native';
+import { CreditCard, CircleCheck as CheckCircle, ArrowLeft, Banknote, QrCode } from 'lucide-react-native';
 
 export default function PaymentScreen() {
   const { user } = useAuth();
   const [admission, setAdmission] = useState<Admission | null>(null);
   const [loading, setLoading] = useState(true);
   const [confirming, setConfirming] = useState(false);
+  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<'qr' | 'cash' | null>(null);
 
   useEffect(() => {
     fetchAdmission();
@@ -59,14 +60,18 @@ export default function PaymentScreen() {
   const handlePaymentConfirmation = async () => {
     if (!admission) return;
 
-    Alert.alert(
-      'Confirm Payment',
-      'Have you completed the payment using the QR code above?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Yes, I have paid', onPress: confirmPayment },
-      ]
-    );
+    if (selectedPaymentMethod === 'qr') {
+      Alert.alert(
+        'Confirm Payment',
+        'Have you completed the payment using the QR code?',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Yes, I have paid', onPress: confirmPayment },
+        ]
+      );
+    } else if (selectedPaymentMethod === 'cash') {
+      confirmCashPayment();
+    }
   };
 
   const confirmPayment = async () => {
@@ -110,6 +115,37 @@ export default function PaymentScreen() {
     } catch (error) {
       console.error('Error confirming payment:', error);
       Alert.alert('Error', 'Failed to confirm payment. Please try again.');
+    } finally {
+      setConfirming(false);
+    }
+  };
+
+  const confirmCashPayment = async () => {
+    if (!admission || !user) return;
+
+    setConfirming(true);
+
+    try {
+      // Create cash payment record for admin approval
+      const { error: cashPaymentError } = await supabase
+        .from('cash_payments')
+        .insert({
+          user_id: user.id,
+          admission_id: admission.id,
+          amount: admission.total_amount,
+          status: 'pending'
+        });
+
+      if (cashPaymentError) throw cashPaymentError;
+
+      Alert.alert(
+        'Cash Payment Submitted!',
+        'Your cash payment request has been submitted for admin approval. You will be notified once approved.',
+        [{ text: 'OK', onPress: () => router.replace('/(tabs)') }]
+      );
+    } catch (error) {
+      console.error('Error submitting cash payment:', error);
+      Alert.alert('Error', 'Failed to submit cash payment request. Please try again.');
     } finally {
       setConfirming(false);
     }
@@ -192,78 +228,209 @@ export default function PaymentScreen() {
         </View>
       </Card>
 
-      {/* QR Code Payment */}
-      <Card style={styles.qrCard}>
-        <Text style={styles.sectionTitle}>Scan to Pay</Text>
-        <Text style={styles.qrSubtitle}>Use PhonePe app to scan and pay</Text>
+      {/* Payment Method Selection */}
+      <Card style={styles.paymentMethodCard}>
+        <Text style={styles.sectionTitle}>Choose Payment Method</Text>
+        <Text style={styles.paymentSubtitle}>Select how you would like to pay</Text>
         
-        <View style={styles.qrContainer}>
-          {/* <Image
-            source={{
-              uri: 'https://images.pexels.com/photos/8919564/pexels-photo-8919564.jpeg?auto=compress&cs=tinysrgb&w=400&h=400&fit=crop'
-            }}
-            style={styles.qrImage}
-            resizeMode="contain"
-          /> */}
-          <Image
-            source={ require('../../assets/images/QR_Payment.png') }
-            style={styles.qrImage}
-            resizeMode="contain" 
-          />
-        </View>
+        <View style={styles.paymentOptions}>
+          {/* QR Payment Option */}
+          <TouchableOpacity
+            style={[
+              styles.paymentOption,
+              selectedPaymentMethod === 'qr' && styles.paymentOptionSelected
+            ]}
+            onPress={() => setSelectedPaymentMethod('qr')}
+          >
+            <View style={styles.paymentOptionHeader}>
+              <QrCode size={32} color={selectedPaymentMethod === 'qr' ? '#FFFFFF' : '#2563EB'} />
+              <Text style={[
+                styles.paymentOptionTitle,
+                selectedPaymentMethod === 'qr' && styles.paymentOptionTitleSelected
+              ]}>
+                QR Payment
+              </Text>
+            </View>
+            <Text style={[
+              styles.paymentOptionDescription,
+              selectedPaymentMethod === 'qr' && styles.paymentOptionDescriptionSelected
+            ]}>
+              Pay instantly using UPI apps like PhonePe, GPay, Paytm
+            </Text>
+            {selectedPaymentMethod === 'qr' && (
+              <View style={styles.selectedIndicator}>
+                <CheckCircle size={20} color="#FFFFFF" />
+              </View>
+            )}
+          </TouchableOpacity>
 
-        <View style={styles.paymentInfo}>
-          <Text style={styles.paymentAmount}>₹{admission.total_amount}</Text>
-          <Text style={styles.paymentNote}>
-            Scan the QR code with PhonePe app or any UPI app like GPay, Paytm, or your banking app
-          </Text>
+          {/* Cash Payment Option */}
+          <TouchableOpacity
+            style={[
+              styles.paymentOption,
+              selectedPaymentMethod === 'cash' && styles.paymentOptionSelected
+            ]}
+            onPress={() => setSelectedPaymentMethod('cash')}
+          >
+            <View style={styles.paymentOptionHeader}>
+              <Banknote size={32} color={selectedPaymentMethod === 'cash' ? '#FFFFFF' : '#10B981'} />
+              <Text style={[
+                styles.paymentOptionTitle,
+                selectedPaymentMethod === 'cash' && styles.paymentOptionTitleSelected
+              ]}>
+                Cash Payment
+              </Text>
+            </View>
+            <Text style={[
+              styles.paymentOptionDescription,
+              selectedPaymentMethod === 'cash' && styles.paymentOptionDescriptionSelected
+            ]}>
+              Pay in cash at the library (requires admin approval)
+            </Text>
+            {selectedPaymentMethod === 'cash' && (
+              <View style={styles.selectedIndicator}>
+                <CheckCircle size={20} color="#FFFFFF" />
+              </View>
+            )}
+          </TouchableOpacity>
         </View>
+      </Card>
 
-        <Button
-          title={confirming ? 'Confirming...' : 'I Have Completed Payment'}
-          onPress={handlePaymentConfirmation}
-          disabled={confirming}
-          style={styles.confirmButton}
-        >
-          <View style={styles.buttonContent}>
-            <CreditCard size={20} color="#FFFFFF" />
-            <Text style={styles.buttonText}>
-              {confirming ? 'Confirming...' : 'I Have Completed Payment'}
+      {/* QR Code Display (when QR payment is selected) */}
+      {selectedPaymentMethod === 'qr' && (
+        <Card style={styles.qrCard}>
+          <Text style={styles.sectionTitle}>Scan to Pay</Text>
+          <Text style={styles.qrSubtitle}>Use any UPI app to scan and pay</Text>
+          
+          <View style={styles.qrContainer}>
+            <Image
+              source={require('../../assets/images/QR_Payment.png')}
+              style={styles.qrImage}
+              resizeMode="contain" 
+            />
+          </View>
+
+          <View style={styles.paymentInfo}>
+            <Text style={styles.paymentAmount}>₹{admission.total_amount}</Text>
+            <Text style={styles.paymentNote}>
+              Scan the QR code with PhonePe, GPay, Paytm, or your banking app
             </Text>
           </View>
-        </Button>
-      </Card>
+        </Card>
+      )}
+
+      {/* Cash Payment Info (when cash payment is selected) */}
+      {selectedPaymentMethod === 'cash' && (
+        <Card style={styles.cashCard}>
+          <Text style={styles.sectionTitle}>Cash Payment</Text>
+          <Text style={styles.cashSubtitle}>Pay at the library counter</Text>
+          
+          <View style={styles.cashInfo}>
+            <Text style={styles.paymentAmount}>₹{admission.total_amount}</Text>
+            <Text style={styles.cashNote}>
+              Your booking will be marked as pending until you pay at the library and an admin approves your payment.
+            </Text>
+          </View>
+        </Card>
+      )}
+
+      {/* Confirm Payment Button */}
+      {selectedPaymentMethod && (
+        <Card style={styles.confirmCard}>
+          <Button
+            title={
+              confirming ? 'Processing...' : 
+              selectedPaymentMethod === 'qr' ? 'I Have Completed Payment' : 
+              'Submit Cash Payment Request'
+            }
+            onPress={handlePaymentConfirmation}
+            disabled={confirming}
+            style={[
+              styles.confirmButton,
+              selectedPaymentMethod === 'cash' && styles.cashConfirmButton
+            ]}
+          >
+            <View style={styles.buttonContent}>
+              {selectedPaymentMethod === 'qr' ? (
+                <CreditCard size={20} color="#FFFFFF" />
+              ) : (
+                <Banknote size={20} color="#FFFFFF" />
+              )}
+              <Text style={styles.buttonText}>
+                {confirming ? 'Processing...' : 
+                 selectedPaymentMethod === 'qr' ? 'I Have Completed Payment' : 
+                 'Submit Cash Payment Request'}
+              </Text>
+            </View>
+          </Button>
+        </Card>
+      )}
 
       {/* Payment Instructions */}
-      <Card style={styles.instructionsCard}>
-        <Text style={styles.sectionTitle}>Payment Instructions</Text>
-        <View style={styles.instructionsList}>
-          <View style={styles.instructionItem}>
-            <Text style={styles.instructionNumber}>1</Text>
-            <Text style={styles.instructionText}>
-              Open PhonePe app or any UPI app (GPay, Paytm, Banking app)
-            </Text>
+      {selectedPaymentMethod && (
+        <Card style={styles.instructionsCard}>
+          <Text style={styles.sectionTitle}>
+            {selectedPaymentMethod === 'qr' ? 'QR Payment Instructions' : 'Cash Payment Instructions'}
+          </Text>
+          <View style={styles.instructionsList}>
+            {selectedPaymentMethod === 'qr' ? (
+              <>
+                <View style={styles.instructionItem}>
+                  <Text style={styles.instructionNumber}>1</Text>
+                  <Text style={styles.instructionText}>
+                    Open PhonePe app or any UPI app (GPay, Paytm, Banking app)
+                  </Text>
+                </View>
+                <View style={styles.instructionItem}>
+                  <Text style={styles.instructionNumber}>2</Text>
+                  <Text style={styles.instructionText}>
+                    Scan the QR code shown above
+                  </Text>
+                </View>
+                <View style={styles.instructionItem}>
+                  <Text style={styles.instructionNumber}>3</Text>
+                  <Text style={styles.instructionText}>
+                    Verify the amount (₹{admission.total_amount}) and complete payment
+                  </Text>
+                </View>
+                <View style={styles.instructionItem}>
+                  <Text style={styles.instructionNumber}>4</Text>
+                  <Text style={styles.instructionText}>
+                    Click "I Have Completed Payment" button after successful payment
+                  </Text>
+                </View>
+              </>
+            ) : (
+              <>
+                <View style={styles.instructionItem}>
+                  <Text style={styles.instructionNumber}>1</Text>
+                  <Text style={styles.instructionText}>
+                    Click "Submit Cash Payment Request" to register your intent to pay
+                  </Text>
+                </View>
+                <View style={styles.instructionItem}>
+                  <Text style={styles.instructionNumber}>2</Text>
+                  <Text style={styles.instructionText}>
+                    Visit the library counter with the exact amount (₹{admission.total_amount})
+                  </Text>
+                </View>
+                <View style={styles.instructionItem}>
+                  <Text style={styles.instructionNumber}>3</Text>
+                  <Text style={styles.instructionText}>
+                    Pay the cashier and ask them to approve your payment in the system
+                  </Text>
+                </View>
+                <View style={styles.instructionItem}>
+                  <Text style={styles.instructionNumber}>4</Text>
+                  <Text style={styles.instructionText}>
+                    Your admission will be activated once the payment is approved
+                  </Text>
+                </View>
+              </>
+            )}
           </View>
-          <View style={styles.instructionItem}>
-            <Text style={styles.instructionNumber}>2</Text>
-            <Text style={styles.instructionText}>
-              Scan the QR code shown above
-            </Text>
-          </View>
-          <View style={styles.instructionItem}>
-            <Text style={styles.instructionNumber}>3</Text>
-            <Text style={styles.instructionText}>
-              Verify the amount (₹{admission.total_amount}) and complete payment
-            </Text>
-          </View>
-          <View style={styles.instructionItem}>
-            <Text style={styles.instructionNumber}>4</Text>
-            <Text style={styles.instructionText}>
-              Click "I Have Completed Payment" button after successful payment
-            </Text>
-          </View>
-        </View>
-      </Card>
+        </Card>
+      )}
     </ScrollView>
   );
 }
@@ -351,6 +518,57 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#10B981',
   },
+  paymentMethodCard: {
+    margin: 16,
+  },
+  paymentSubtitle: {
+    fontSize: 14,
+    color: '#64748B',
+    marginBottom: 20,
+    textAlign: 'center',
+  },
+  paymentOptions: {
+    gap: 16,
+  },
+  paymentOption: {
+    padding: 20,
+    borderWidth: 2,
+    borderColor: '#E5E7EB',
+    borderRadius: 12,
+    backgroundColor: '#FFFFFF',
+    position: 'relative',
+  },
+  paymentOptionSelected: {
+    borderColor: '#2563EB',
+    backgroundColor: '#2563EB',
+  },
+  paymentOptionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  paymentOptionTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#1E293B',
+    marginLeft: 12,
+  },
+  paymentOptionTitleSelected: {
+    color: '#FFFFFF',
+  },
+  paymentOptionDescription: {
+    fontSize: 14,
+    color: '#64748B',
+    lineHeight: 20,
+  },
+  paymentOptionDescriptionSelected: {
+    color: '#FFFFFF',
+  },
+  selectedIndicator: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
+  },
   qrCard: {
     margin: 16,
     alignItems: 'center',
@@ -392,8 +610,34 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 20,
   },
+  cashCard: {
+    margin: 16,
+    alignItems: 'center',
+  },
+  cashSubtitle: {
+    fontSize: 14,
+    color: '#64748B',
+    marginBottom: 24,
+    textAlign: 'center',
+  },
+  cashInfo: {
+    alignItems: 'center',
+    marginBottom: 24,
+  },
+  cashNote: {
+    fontSize: 14,
+    color: '#64748B',
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  confirmCard: {
+    margin: 16,
+  },
   confirmButton: {
     width: '100%',
+  },
+  cashConfirmButton: {
+    backgroundColor: '#10B981',
   },
   buttonContent: {
     flexDirection: 'row',
